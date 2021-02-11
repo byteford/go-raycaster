@@ -5,17 +5,19 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
+	"image/jpeg"
 	"log"
 	"math"
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"sync"
 
 	"github.com/ungerik/go3d/vec3"
 )
 
 var maxRayDepth int = 10
+var wg sync.WaitGroup
 
 type sphere struct {
 	centre                       vec3.T
@@ -138,6 +140,8 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 	return vec3.Add(&surfaceColor, &sph.emissionsColor)
 }
 func render(spheres []sphere, iteration int) {
+	wg.Add(1)
+	defer wg.Done()
 	width, height := 1920, 1080 //640, 480
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	imageg := make([]vec3.T, width*height)
@@ -162,13 +166,13 @@ func render(spheres []sphere, iteration int) {
 			pixel++
 		}
 	}
-	f, err := os.Create(fmt.Sprintf("pics/draw%v.png", iteration))
+	f, err := os.Create(fmt.Sprintf("pics/draw%v.jpeg", iteration))
 	if err != nil {
 		panic(err)
 	}
 
 	defer f.Close()
-	png.Encode(f, img)
+	jpeg.Encode(f, img, nil)
 	fmt.Printf("Finished Rendering: %v\n", iteration)
 }
 func start() {
@@ -184,6 +188,7 @@ func start() {
 		go render(spheres, i)
 
 	}
+	wg.Wait()
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")

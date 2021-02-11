@@ -1,3 +1,5 @@
 *.png
 *.ppm
 *.prof
+*.jpeg
+.DS_Store
