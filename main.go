@@ -108,9 +108,29 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 		temp := vec3.Add(mulF(reflection, fresneleffect), mulF(refraction, (1-fresneleffect)*sph.transparency))
 		surfaceColor = vec3.Mul(
 			&temp, &sph.surfaceColor)
+	} else {
+		for i := 0; i < len(spheres); i++ {
+			if spheres[i].emissionsColor[0] > 0 {
+				transmission := vec3.T{1, 1, 1}
+				lightDirection := vec3.Sub(&spheres[i].centre, &phit)
+				lightDirection.Normalize()
+				for j := 0; j < len(spheres); j++ {
+					if i != j {
+						org := vec3.Add(&phit, mulF(nhit, bias))
+						ints, _, _ := spheres[j].intersect(&org, &lightDirection)
+						if ints {
+							transmission = vec3.Zero
+							break
+						}
+					}
+				}
+				ste := vec3.Mul(&sph.surfaceColor, &spheres[i].emissionsColor)
+				surfaceColor = vec3.Add(&surfaceColor, mulF(vec3.Mul(&ste, &transmission), math.Max(0.0, float64(vec3.Dot(&nhit, &lightDirection)))))
+			}
+		}
 	}
 
-	return surfaceColor
+	return vec3.Add(&surfaceColor, &sph.emissionsColor)
 }
 func render(spheres []sphere, iteration int) {
 
@@ -157,7 +177,7 @@ func render(spheres []sphere, iteration int) {
 func main() {
 	var spheres []sphere
 
-	spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.20, 0.20, 0.}, vec3.T{0.20, 0.20, 0.}, 0, 0))
+	spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.0, 0.20, 0.}, vec3.T{0.0, 0.20, 0.0}, 1, 0))
 	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -20}, 4, vec3.T{1.00, 0.32, 0.36}, 1, 0))
 	spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -15}, 2, vec3.T{0.90, 0.76, 0.46}, 1, 0))
 	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -10}, 1, vec3.T{1, 1, 1}, 1, 1))
