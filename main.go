@@ -1,11 +1,16 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 	"math"
 	"os"
+	"runtime"
+	"runtime/pprof"
 
 	"github.com/ungerik/go3d/vec3"
 )
@@ -36,8 +41,8 @@ func (s *sphere) intersect(rayorig, raydir *vec3.T) (bol bool, t0 float64, t1 fl
 	t1 = tca + thc
 	bol = true
 	return
-
 }
+
 func mix(a, b, mix float64) float64 {
 	return (b * mix) + (a * (1 - mix))
 }
@@ -134,7 +139,7 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 }
 func render(spheres []sphere, iteration int) {
 
-	width, height := 1920, 1080 //640, 480
+	width, height := 640, 480 //1920, 1080
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	imageg := make([]vec3.T, width*height)
 	pixel := 0
@@ -158,30 +163,57 @@ func render(spheres []sphere, iteration int) {
 			pixel++
 		}
 	}
-	f, err := os.Create("draw.png")
+	f, err := os.Create(fmt.Sprintf("pics/draw%v.png", iteration))
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 	png.Encode(f, img)
-	//fmt.Printf("P6\n%v %v\n255\n", width, height)
-	//for i := 0; i < width*height; i++ {
-	//	img.set()
-	//fmt.Printf("%c%c%c", int((math.Min(float64(1), float64(image[i][0])) * 255)), int((math.Min(float64(1), float64(image[i][1])) * 255)), int((math.Min(float64(1), float64(image[i][2])) * 255)))
-	//	fmt.Printf("%x%x%x", "00DD", "00DD", "00DD")
-
-	//}
-	//fmt.Printf("%v", image)
-	//fmt.Println(image)
 }
+func start() {
+	for i := 0; i < 100; i++ {
+		fmt.Printf("Started Rendering: %v\n", i)
+		var spheres []sphere
+
+		spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.0, 0.20, 0.}, vec3.T{0.0, 0.20, 0.0}, 1, 0))
+		spheres = append(spheres, makeSphere(vec3.T{0.0, 4.0 - 5, -10}, 1, vec3.T{float32(i) / 100, 0.32, 0.36}, 1, 0.5))
+		spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -5}, 2, vec3.T{0.9, 0.76, 0.46}, 1, 0))
+		spheres = append(spheres, makeSphere(vec3.T{5.0, 0, -15}, 3, vec3.T{0.65, 0.77, 0.97}, 1, 0))
+
+		render(spheres, i)
+		fmt.Printf("Finished Rendering: %v\n", i)
+	}
+}
+
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
+
 func main() {
-	var spheres []sphere
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
-	spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.0, 0.20, 0.}, vec3.T{0.0, 0.20, 0.0}, 1, 0))
-	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -20}, 4, vec3.T{1.00, 0.32, 0.36}, 1, 0))
-	spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -15}, 2, vec3.T{0.90, 0.76, 0.46}, 1, 0))
-	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -10}, 1, vec3.T{1, 1, 1}, 1, 1))
+	start()
 
-	render(spheres, 0)
-	//fmt.Printf("%v", spheres)
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		runtime.GC()    // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+	}
+
 }
