@@ -10,13 +10,13 @@ import (
 	"github.com/ungerik/go3d/vec3"
 )
 
-var maxRayDepth int = 5
+var maxRayDepth int = 10
 
 type sphere struct {
-	centre                   vec3.T
-	radius, radius2          float64
-	surfaceColor             vec3.T
-	transparency, reflection float64
+	centre                       vec3.T
+	radius, radius2              float64
+	surfaceColor, emissionsColor vec3.T
+	reflection, transparency     float64
 }
 
 func (s *sphere) intersect(rayorig, raydir *vec3.T) (bol bool, t0 float64, t1 float64) {
@@ -48,7 +48,12 @@ func mulF(v vec3.T, f float64) *vec3.T {
 func makeSphere(centre vec3.T, radius float64,
 	surfaceColor vec3.T,
 	reflection, transparency float64) sphere {
-	return sphere{centre, radius, radius * radius, surfaceColor, reflection, transparency}
+	return sphere{centre, radius, radius * radius, surfaceColor, vec3.Zero, reflection, transparency}
+}
+func makeSphereEmis(centre vec3.T, radius float64,
+	surfaceColor, emissionsColor vec3.T,
+	reflection, transparency float64) sphere {
+	return sphere{centre, radius, radius * radius, surfaceColor, emissionsColor, reflection, transparency}
 }
 func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 	tnear := math.Inf(1)
@@ -76,25 +81,40 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 	nhit := vec3.Sub(&phit, &(*sph).centre)
 	nhit.Normalize()
 	bias := 1e-4
+	inside := false
 	if vec3.Dot(&raydir, &nhit) > 0 {
 		nhit = nhit.Inverted()
+		inside = true
 	}
-	if sph.reflection > 0 && depth < maxRayDepth {
+	if (sph.transparency > 0 || sph.reflection > 0) && depth < maxRayDepth {
 		facingratio := 0 - float64(vec3.Dot(&raydir, &nhit))
 		fresneleffect := mix(math.Pow(1-facingratio, 3), 1, 0.1)
 		refldir := vec3.Sub(&raydir, mulF(nhit, float64(2*vec3.Dot(&raydir, &nhit)))) //mulF(vec3.Sub(&raydir, &nhit), float64(2*vec3.Dot(&raydir, &nhit)))
 		org := vec3.Add(&phit, mulF(nhit, bias))
 		reflection := trace(org, refldir, spheres, depth+1) //vec3.T{0, 1.74, 2}
-
+		refraction := vec3.Zero
+		if sph.transparency > 0 {
+			ior := 1.1
+			eta := ior
+			if !inside {
+				eta = 1 / ior
+			}
+			cosi := float64(-vec3.Dot(&nhit, &raydir))
+			k := 1 - eta*eta*(1-cosi*cosi)
+			refrdir := vec3.Add(mulF(raydir, eta), mulF(nhit, (eta*cosi-math.Sqrt(k))))
+			refrdir.Normalize()
+			refraction = trace(vec3.Sub(&phit, mulF(nhit, bias)), refrdir, spheres, depth+1)
+		}
+		temp := vec3.Add(mulF(reflection, fresneleffect), mulF(refraction, (1-fresneleffect)*sph.transparency))
 		surfaceColor = vec3.Mul(
-			mulF(reflection, fresneleffect), &sph.surfaceColor)
+			&temp, &sph.surfaceColor)
 	}
 
 	return surfaceColor
 }
 func render(spheres []sphere, iteration int) {
 
-	width, height := 640, 480
+	width, height := 1920, 1080 //640, 480
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	imageg := make([]vec3.T, width*height)
 	pixel := 0
@@ -137,10 +157,10 @@ func render(spheres []sphere, iteration int) {
 func main() {
 	var spheres []sphere
 
-	spheres = append(spheres, makeSphere(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.20, 0.20, 0.}, 0, 0))
+	spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.20, 0.20, 0.}, vec3.T{0.20, 0.20, 0.}, 0, 0))
 	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -20}, 4, vec3.T{1.00, 0.32, 0.36}, 1, 0))
 	spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -15}, 2, vec3.T{0.90, 0.76, 0.46}, 1, 0))
-	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -10}, 1, vec3.T{1, 1, 1}, 1, 0))
+	spheres = append(spheres, makeSphere(vec3.T{0.0, 0, -10}, 1, vec3.T{1, 1, 1}, 1, 1))
 
 	render(spheres, 0)
 	//fmt.Printf("%v", spheres)
