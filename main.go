@@ -138,8 +138,7 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 	return vec3.Add(&surfaceColor, &sph.emissionsColor)
 }
 func render(spheres []sphere, iteration int) {
-
-	width, height := 640, 480 //1920, 1080
+	width, height := 1920, 1080 //640, 480
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	imageg := make([]vec3.T, width*height)
 	pixel := 0
@@ -167,8 +166,10 @@ func render(spheres []sphere, iteration int) {
 	if err != nil {
 		panic(err)
 	}
+
 	defer f.Close()
 	png.Encode(f, img)
+	fmt.Printf("Finished Rendering: %v\n", iteration)
 }
 func start() {
 	for i := 0; i < 100; i++ {
@@ -180,8 +181,8 @@ func start() {
 		spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -5}, 2, vec3.T{0.9, 0.76, 0.46}, 1, 0))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, 0, -15}, 3, vec3.T{0.65, 0.77, 0.97}, 1, 0))
 
-		render(spheres, i)
-		fmt.Printf("Finished Rendering: %v\n", i)
+		go render(spheres, i)
+
 	}
 }
 
