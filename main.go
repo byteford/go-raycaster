@@ -25,6 +25,11 @@ type sphere struct {
 	surfaceColor, emissionsColor vec3.T
 	reflection, transparency     float64
 }
+type cam struct {
+	width, height                                int
+	invWidth, invHeight, fov, aspectratio, angle float64
+	//angle := math.Tan(math.Pi * 0.5 * fov / 180.)
+}
 
 func (s *sphere) intersect(rayorig, raydir *vec3.T) (bol bool, t0 float64, t1 float64) {
 	l := vec3.Sub(&s.centre, rayorig)
@@ -139,33 +144,34 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 
 	return vec3.Add(&surfaceColor, &sph.emissionsColor)
 }
-func saveImg(img *image.RGBA, iteration int) {
-	wg.Add(1)
-	defer wg.Done()
-	f, err := os.Create(fmt.Sprintf("pics/draw%v.jpeg", iteration))
-	if err != nil {
-		panic(err)
+func saveImg(imgc chan *image.RGBA, iterc chan int) {
+	for {
+		img, more := <-imgc
+		if more {
+			iteration := <-iterc
+			fmt.Printf("%v:%v", iteration, more)
+			f, err := os.Create(fmt.Sprintf("pics/draw%v.jpeg", iteration))
+			if err != nil {
+				panic(err)
+			}
+			jpeg.Encode(f, img, nil)
+			f.Close()
+			fmt.Printf("saved: %v\n", iteration)
+		} else {
+			return
+		}
 	}
-	defer f.Close()
-	jpeg.Encode(f, img, nil)
-	fmt.Printf("saved: %v\n", iteration)
 }
-func render(spheres []sphere, iteration int) {
-	wg.Add(1)
+
+func render(camra cam, spheres []sphere, iteration int, imgc chan *image.RGBA, iterc chan int) {
 	defer wg.Done()
-	width, height := 1920, 1080 //640, 480
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	imageg := make([]vec3.T, width*height)
+	img := image.NewRGBA(image.Rect(0, 0, camra.width, camra.height))
+	imageg := make([]vec3.T, camra.width*camra.height)
 	pixel := 0
-	invWidth := 1 / float64(width)
-	invHeight := 1 / float64(height)
-	var fov float64 = 30
-	aspectratio := float64(width) / float64(height)
-	angle := math.Tan(math.Pi * 0.5 * fov / 180.)
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			xx := (2*((float64(x)+0.5)*invWidth) - 1) * angle * aspectratio
-			yy := (1 - 2*((float64(y)+0.5)*invHeight)) * angle
+	for y := 0; y < camra.height; y++ {
+		for x := 0; x < camra.width; x++ {
+			xx := (2*((float64(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
+			yy := (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
 			rayDir := vec3.T{float32(xx), float32(yy), -1}
 			rayDir.Normalize()
 			imageg[pixel] = trace(vec3.Zero, rayDir, spheres, 0)
@@ -177,12 +183,21 @@ func render(spheres []sphere, iteration int) {
 			pixel++
 		}
 	}
-
-	go saveImg(img, iteration)
 	fmt.Printf("Finished Rendering: %v\n", iteration)
+	imgc <- img
+	iterc <- iteration
+	//go saveImg(img, iteration)
+
 }
 func start() {
-	interations := 100.0
+	interations := 1.0
+	imgc := make(chan *image.RGBA)
+	iterc := make(chan int)
+	//	width, height                                int
+	//invWidth, invHeight, fov, aspectratio, angle float64
+	width, height, fov := 1920, 1080, 30.0
+	camra := cam{width, height, 1 / float64(width), 1 / float64(height), 30, float64(width) / float64(height), math.Tan(math.Pi * 0.5 * fov / 180.)}
+	go saveImg(imgc, iterc)
 	for i := 0; i < int(interations); i++ {
 		fmt.Printf("Started Rendering: %v\n", i)
 		var spheres []sphere
@@ -191,11 +206,12 @@ func start() {
 		spheres = append(spheres, makeSphere(vec3.T{0.0, 4.0 - 5, -10}, 1, vec3.T{float32(float64(i) / interations), 0.32, 0.36}, 1, 0.5))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -5}, 2, vec3.T{0.9, 0.76, 0.46}, 1, 0))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, 0, -15}, 3, vec3.T{0.65, 0.77, 0.97}, 1, 0))
-
-		go render(spheres, i)
+		wg.Add(1)
+		go render(camra, spheres, i, imgc, iterc)
 
 	}
 	wg.Wait()
+	close(imgc)
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
