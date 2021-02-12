@@ -21,13 +21,13 @@ var wg sync.WaitGroup
 
 type sphere struct {
 	centre                       vec3.T
-	radius, radius2              float64
+	radius, radius2              float32
 	surfaceColor, emissionsColor vec3.T
-	reflection, transparency     float64
+	reflection, transparency     float32
 }
 type cam struct {
 	width, height                                int
-	invWidth, invHeight, fov, aspectratio, angle float64
+	invWidth, invHeight, fov, aspectratio, angle float32
 	//angle := math.Tan(math.Pi * 0.5 * fov / 180.)
 }
 type rendWork struct {
@@ -35,46 +35,47 @@ type rendWork struct {
 	iteration int
 }
 
-func (s *sphere) intersect(rayorig, raydir *vec3.T) (bol bool, t0 float64, t1 float64) {
-	l := vec3.Sub(&s.centre, rayorig)
-	tca := float64(vec3.Dot(&l, raydir))
+func (s *sphere) intersect(rayorig, raydir, l *vec3.T) (bol bool, t0 float32, t1 float32) {
+	tca := vec3.Dot(l, raydir)
 	if tca < 0 {
 		bol = false
 		return
 	}
-	var d2 float64 = float64(vec3.Dot(&l, &l)) - tca*tca
+	var d2 = vec3.Dot(l, l) - tca*tca
 	if d2 > s.radius2 {
 		bol = false
 		return
 	}
-	thc := math.Sqrt(s.radius2 - float64(d2))
+	thc := float32(math.Sqrt(float64(s.radius2 - d2)))
 	t0 = tca - thc
 	t1 = tca + thc
 	bol = true
 	return
 }
 
-func mix(a, b, mix float64) float64 {
+func mix(a, b, mix float32) float32 {
 	return (b * mix) + (a * (1 - mix))
 }
-func mulF(v *vec3.T, f float64) *vec3.T {
-	temp := vec3.T{v[0] * float32(f), v[1] * float32(f), v[2] * float32(f)}
+func mulF(v *vec3.T, f float32) *vec3.T {
+	temp := vec3.T{v[0] * f, v[1] * f, v[2] * f}
 	return &temp
 }
-func makeSphere(centre vec3.T, radius float64,
+func makeSphere(centre vec3.T, radius float32,
 	surfaceColor vec3.T,
-	reflection, transparency float64) sphere {
+	reflection, transparency float32) sphere {
 	return sphere{centre, radius, radius * radius, surfaceColor, vec3.Zero, reflection, transparency}
 }
-func makeSphereEmis(centre vec3.T, radius float64,
+func makeSphereEmis(centre vec3.T, radius float32,
 	surfaceColor, emissionsColor vec3.T,
-	reflection, transparency float64) sphere {
+	reflection, transparency float32) sphere {
 	return sphere{centre, radius, radius * radius, surfaceColor, emissionsColor, reflection, transparency}
 }
-func closesSphere(rayorig, raydir *vec3.T, spheres *[]sphere) (sph *sphere, tnear float64) {
-	tnear = math.Inf(1)
+func closesSphere(rayorig, raydir *vec3.T, spheres *[]sphere) (sph *sphere, tnear float32) {
+	tnear = float32(math.Inf(1))
+	var l vec3.T
 	for i := 0; i < len(*spheres); i++ {
-		inter, t0, t1 := (*spheres)[i].intersect(rayorig, raydir)
+		l = vec3.Sub(&(*spheres)[i].centre, rayorig)
+		inter, t0, t1 := (*spheres)[i].intersect(rayorig, raydir, &l)
 		if inter {
 			if t0 < 0 {
 				t0 = t1
@@ -87,8 +88,30 @@ func closesSphere(rayorig, raydir *vec3.T, spheres *[]sphere) (sph *sphere, tnea
 	}
 	return
 }
-func transRef() {
-
+func transRef(raydir, phit, nhit *vec3.T, inside bool, bias float32, sph *sphere, spheres *[]sphere, depth int) *vec3.T {
+	facingratio := 0 - float64(vec3.Dot(raydir, nhit))
+	fresneleffect := mix(float32(math.Pow(1-facingratio, 3)), 1, 0.1)
+	refldir := vec3.Sub(raydir, mulF(nhit, 2*vec3.Dot(raydir, nhit))) //mulF(vec3.Sub(&raydir, &nhit), float64(2*vec3.Dot(&raydir, &nhit)))
+	org := vec3.Add(phit, mulF(nhit, bias))
+	reflection := trace(&org, &refldir, spheres, depth+1) //vec3.T{0, 1.74, 2}
+	refraction := vec3.Zero
+	if sph.transparency > 0 {
+		var ior float32 = 1.1
+		eta := ior
+		if !inside {
+			eta = 1 / ior
+		}
+		cosi := -vec3.Dot(nhit, raydir)
+		k := 1 - eta*eta*(1-cosi*cosi)
+		refrdir := vec3.Add(mulF(raydir, eta), mulF(nhit, (eta*cosi-float32(math.Sqrt(float64(k))))))
+		refrdir.Normalize()
+		org := vec3.Sub(phit, mulF(nhit, bias))
+		refraction = trace(&org, &refrdir, spheres, depth+1)
+	}
+	temp := vec3.Add(mulF(&reflection, fresneleffect), mulF(&refraction, (1-fresneleffect)*sph.transparency))
+	surfaceColor := vec3.Mul(
+		&temp, &sph.surfaceColor)
+	return &surfaceColor
 }
 func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
 
@@ -103,36 +126,16 @@ func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
 	phit := vec3.Add(rayorig, mulF(raydir, tnear))
 	nhit := vec3.Sub(&phit, &(*sph).centre)
 	nhit.Normalize()
-	bias := 1e-4
+	var bias float32 = 1e-4
 	inside := false
 	if vec3.Dot(raydir, &nhit) > 0 {
 		nhit = nhit.Inverted()
 		inside = true
 	}
 	if (sph.transparency > 0 || sph.reflection > 0) && depth < maxRayDepth {
-		facingratio := 0 - float64(vec3.Dot(raydir, &nhit))
-		fresneleffect := mix(math.Pow(1-facingratio, 3), 1, 0.1)
-		refldir := vec3.Sub(raydir, mulF(&nhit, float64(2*vec3.Dot(raydir, &nhit)))) //mulF(vec3.Sub(&raydir, &nhit), float64(2*vec3.Dot(&raydir, &nhit)))
-		org := vec3.Add(&phit, mulF(&nhit, bias))
-		reflection := trace(&org, &refldir, spheres, depth+1) //vec3.T{0, 1.74, 2}
-		refraction := vec3.Zero
-		if sph.transparency > 0 {
-			ior := 1.1
-			eta := ior
-			if !inside {
-				eta = 1 / ior
-			}
-			cosi := float64(-vec3.Dot(&nhit, raydir))
-			k := 1 - eta*eta*(1-cosi*cosi)
-			refrdir := vec3.Add(mulF(raydir, eta), mulF(&nhit, (eta*cosi-math.Sqrt(k))))
-			refrdir.Normalize()
-			org := vec3.Sub(&phit, mulF(&nhit, bias))
-			refraction = trace(&org, &refrdir, spheres, depth+1)
-		}
-		temp := vec3.Add(mulF(&reflection, fresneleffect), mulF(&refraction, (1-fresneleffect)*sph.transparency))
-		surfaceColor = vec3.Mul(
-			&temp, &sph.surfaceColor)
+		surfaceColor = *transRef(raydir, &phit, &nhit, inside, bias, sph, spheres, depth)
 	} else {
+		var l vec3.T
 		for i := 0; i < len(*spheres); i++ {
 			if (*spheres)[i].emissionsColor[0] > 0 {
 				transmission := vec3.T{1, 1, 1}
@@ -141,7 +144,8 @@ func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
 				for j := 0; j < len((*spheres)); j++ {
 					if i != j {
 						org := vec3.Add(&phit, mulF(&nhit, bias))
-						ints, _, _ := (*spheres)[j].intersect(&org, &lightDirection)
+						l = vec3.Sub(&(*spheres)[i].centre, rayorig)
+						ints, _, _ := (*spheres)[j].intersect(&org, &lightDirection, &l)
 						if ints {
 							transmission = vec3.Zero
 							break
@@ -150,7 +154,7 @@ func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
 				}
 				ste := vec3.Mul(&sph.surfaceColor, &(*spheres)[i].emissionsColor)
 				trans := vec3.Mul(&ste, &transmission)
-				surfaceColor = vec3.Add(&surfaceColor, mulF(&trans, math.Max(0.0, float64(vec3.Dot(&nhit, &lightDirection)))))
+				surfaceColor = vec3.Add(&surfaceColor, mulF(&trans, float32(math.Max(0.0, float64(vec3.Dot(&nhit, &lightDirection))))))
 			}
 		}
 	}
@@ -190,11 +194,11 @@ func render(camra *cam, workc chan *rendWork, imgc chan *image.RGBA, iterc chan 
 			img := image.NewRGBA(image.Rect(0, 0, camra.width, camra.height))
 			imageg := make([]vec3.T, camra.width*camra.height)
 			pixel := 0
-			var xx, yy float64
+			var xx, yy float32
 			for y := 0; y < camra.height; y++ {
 				for x := 0; x < camra.width; x++ {
-					xx = (2*((float64(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
-					yy = (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
+					xx = (2*((float32(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
+					yy = (1 - 2*((float32(y)+0.5)*camra.invHeight)) * camra.angle
 					rayDir := vec3.T{float32(xx), float32(yy), -1}
 					rayDir.Normalize()
 					imageg[pixel] = trace(&vec3.Zero, &rayDir, spheres, 0)
@@ -222,7 +226,7 @@ func start() {
 	//	width, height                                int
 	//invWidth, invHeight, fov, aspectratio, angle float64
 	width, height, fov := 1920, 1080, 30.0
-	camra := cam{width, height, 1 / float64(width), 1 / float64(height), 30, float64(width) / float64(height), math.Tan(math.Pi * 0.5 * fov / 180.)}
+	camra := cam{width, height, 1 / float32(width), 1 / float32(height), 30, float32(width) / float32(height), float32(math.Tan(math.Pi * 0.5 * fov / 180.))}
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go render(&camra, workc, imgc, iterc)
