@@ -228,6 +228,7 @@ func start() {
 		spheres = append(spheres, makeSphere(vec3.T{5.0, 0, -15}, 3, vec3.T{0.65, 0.77, 0.97}, 1, 0))
 		workc <- &rendWork{&spheres, i}
 	}
+	close(workc)
 	wg.Wait()
 	close(imgc)
 }
