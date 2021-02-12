@@ -139,6 +139,17 @@ func trace(rayorig, raydir vec3.T, spheres []sphere, depth int) vec3.T {
 
 	return vec3.Add(&surfaceColor, &sph.emissionsColor)
 }
+func saveImg(img *image.RGBA, iteration int) {
+	wg.Add(1)
+	defer wg.Done()
+	f, err := os.Create(fmt.Sprintf("pics/draw%v.jpeg", iteration))
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	jpeg.Encode(f, img, nil)
+	fmt.Printf("saved: %v\n", iteration)
+}
 func render(spheres []sphere, iteration int) {
 	wg.Add(1)
 	defer wg.Done()
@@ -166,22 +177,18 @@ func render(spheres []sphere, iteration int) {
 			pixel++
 		}
 	}
-	f, err := os.Create(fmt.Sprintf("pics/draw%v.jpeg", iteration))
-	if err != nil {
-		panic(err)
-	}
 
-	defer f.Close()
-	jpeg.Encode(f, img, nil)
+	go saveImg(img, iteration)
 	fmt.Printf("Finished Rendering: %v\n", iteration)
 }
 func start() {
-	for i := 0; i < 100; i++ {
+	interations := 100.0
+	for i := 0; i < int(interations); i++ {
 		fmt.Printf("Started Rendering: %v\n", i)
 		var spheres []sphere
 
 		spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.0, 0.20, 0.}, vec3.T{0.0, 0.20, 0.0}, 1, 0))
-		spheres = append(spheres, makeSphere(vec3.T{0.0, 4.0 - 5, -10}, 1, vec3.T{float32(i) / 100, 0.32, 0.36}, 1, 0.5))
+		spheres = append(spheres, makeSphere(vec3.T{0.0, 4.0 - 5, -10}, 1, vec3.T{float32(float64(i) / interations), 0.32, 0.36}, 1, 0.5))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -5}, 2, vec3.T{0.9, 0.76, 0.46}, 1, 0))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, 0, -15}, 3, vec3.T{0.65, 0.77, 0.97}, 1, 0))
 
