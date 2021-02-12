@@ -172,19 +172,15 @@ func render(camra *cam, spheres *[]sphere, iteration int, imgc chan *image.RGBA,
 	img := image.NewRGBA(image.Rect(0, 0, camra.width, camra.height))
 	imageg := make([]vec3.T, camra.width*camra.height)
 	pixel := 0
-
+	var xx, yy float64
 	for y := 0; y < camra.height; y++ {
 		for x := 0; x < camra.width; x++ {
-			xx := (2*((float64(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
-			yy := (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
+			xx = (2*((float64(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
+			yy = (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
 			rayDir := vec3.T{float32(xx), float32(yy), -1}
 			rayDir.Normalize()
 			imageg[pixel] = trace(vec3.Zero, rayDir, spheres, 0)
-			//makeImg(pixel, x, y, imageg, img)
-			img.Set(x, y,
-				color.RGBA{uint8(math.Min(float64(1), float64(imageg[pixel][0])) * 255),
-					uint8(math.Min(float64(1), float64(imageg[pixel][1])) * 255),
-					uint8(math.Min(float64(1), float64(imageg[pixel][2])) * 255), 255})
+			makeImg(pixel, x, y, imageg, img)
 			pixel++
 		}
 	}
