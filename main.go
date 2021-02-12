@@ -30,6 +30,10 @@ type cam struct {
 	invWidth, invHeight, fov, aspectratio, angle float64
 	//angle := math.Tan(math.Pi * 0.5 * fov / 180.)
 }
+type rendWork struct {
+	spheres   *[]sphere
+	iteration int
+}
 
 func (s *sphere) intersect(rayorig, raydir *vec3.T) (bol bool, t0 float64, t1 float64) {
 	l := vec3.Sub(&s.centre, rayorig)
@@ -167,37 +171,52 @@ func makeImg(pixel, x, y int, imageg []vec3.T, img *image.RGBA) {
 			uint8(math.Min(float64(1), float64(imageg[pixel][1])) * 255),
 			uint8(math.Min(float64(1), float64(imageg[pixel][2])) * 255), 255})
 }
-func render(camra *cam, spheres *[]sphere, iteration int, imgc chan *image.RGBA, iterc chan int) {
+func render(camra *cam, workc chan *rendWork, imgc chan *image.RGBA, iterc chan int) {
 	defer wg.Done()
-	img := image.NewRGBA(image.Rect(0, 0, camra.width, camra.height))
-	imageg := make([]vec3.T, camra.width*camra.height)
-	pixel := 0
-	var xx, yy float64
-	for y := 0; y < camra.height; y++ {
-		for x := 0; x < camra.width; x++ {
-			xx = (2*((float64(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
-			yy = (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
-			rayDir := vec3.T{float32(xx), float32(yy), -1}
-			rayDir.Normalize()
-			imageg[pixel] = trace(vec3.Zero, rayDir, spheres, 0)
-			makeImg(pixel, x, y, imageg, img)
-			pixel++
+	for {
+		work, more := <-workc
+		if more {
+			spheres := work.spheres
+			iteration := work.iteration
+			img := image.NewRGBA(image.Rect(0, 0, camra.width, camra.height))
+			imageg := make([]vec3.T, camra.width*camra.height)
+			pixel := 0
+			var xx, yy float64
+			for y := 0; y < camra.height; y++ {
+				for x := 0; x < camra.width; x++ {
+					xx = (2*((float64(x)+0.5)*camra.invWidth) - 1) * camra.angle * camra.aspectratio
+					yy = (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
+					rayDir := vec3.T{float32(xx), float32(yy), -1}
+					rayDir.Normalize()
+					imageg[pixel] = trace(vec3.Zero, rayDir, spheres, 0)
+					makeImg(pixel, x, y, imageg, img)
+					pixel++
+				}
+			}
+			fmt.Printf("Finished Rendering: %v\n", iteration)
+			imgc <- img
+			iterc <- iteration
+			//go saveImg(img, iteration)
+		} else {
+			return
 		}
 	}
-	fmt.Printf("Finished Rendering: %v\n", iteration)
-	imgc <- img
-	iterc <- iteration
-	//go saveImg(img, iteration)
-
 }
 func start() {
+	workers := 7
 	interations := 1000.0
 	imgc := make(chan *image.RGBA)
 	iterc := make(chan int)
+	workc := make(chan *rendWork)
+
 	//	width, height                                int
 	//invWidth, invHeight, fov, aspectratio, angle float64
 	width, height, fov := 1920, 1080, 30.0
 	camra := cam{width, height, 1 / float64(width), 1 / float64(height), 30, float64(width) / float64(height), math.Tan(math.Pi * 0.5 * fov / 180.)}
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go render(&camra, workc, imgc, iterc)
+	}
 	go saveImg(imgc, iterc)
 	for i := 0; i < int(interations); i++ {
 		fmt.Printf("Started Rendering: %v\n", i)
@@ -207,9 +226,7 @@ func start() {
 		spheres = append(spheres, makeSphere(vec3.T{0.0, 4.0 - 5, -10}, 1, vec3.T{float32(float64(i) / interations), 0.32, 0.36}, 1, 0.5))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, -1, -5}, 2, vec3.T{0.9, 0.76, 0.46}, 1, 0))
 		spheres = append(spheres, makeSphere(vec3.T{5.0, 0, -15}, 3, vec3.T{0.65, 0.77, 0.97}, 1, 0))
-		wg.Add(1)
-		go render(&camra, &spheres, i, imgc, iterc)
-
+		workc <- &rendWork{&spheres, i}
 	}
 	wg.Wait()
 	close(imgc)
