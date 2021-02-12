@@ -71,10 +71,8 @@ func makeSphereEmis(centre vec3.T, radius float64,
 	reflection, transparency float64) sphere {
 	return sphere{centre, radius, radius * radius, surfaceColor, emissionsColor, reflection, transparency}
 }
-func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
-	tnear := math.Inf(1)
-	//const Sphere* sphere = NULL;
-	var sph *sphere
+func closesSphere(rayorig, raydir *vec3.T, spheres *[]sphere) (sph *sphere, tnear float64) {
+	tnear = math.Inf(1)
 	for i := 0; i < len(*spheres); i++ {
 		inter, t0, t1 := (*spheres)[i].intersect(rayorig, raydir)
 		if inter {
@@ -87,6 +85,15 @@ func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
 			}
 		}
 	}
+	return
+}
+func transRef() {
+
+}
+func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
+
+	//const Sphere* sphere = NULL;
+	sph, tnear := closesSphere(rayorig, raydir, spheres)
 	if sph == nil {
 		return vec3.T{2, 2, 2}
 
