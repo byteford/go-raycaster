@@ -57,7 +57,7 @@ func (s *sphere) intersect(rayorig, raydir *vec3.T) (bol bool, t0 float64, t1 fl
 func mix(a, b, mix float64) float64 {
 	return (b * mix) + (a * (1 - mix))
 }
-func mulF(v vec3.T, f float64) *vec3.T {
+func mulF(v *vec3.T, f float64) *vec3.T {
 	temp := vec3.T{v[0] * float32(f), v[1] * float32(f), v[2] * float32(f)}
 	return &temp
 }
@@ -71,12 +71,12 @@ func makeSphereEmis(centre vec3.T, radius float64,
 	reflection, transparency float64) sphere {
 	return sphere{centre, radius, radius * radius, surfaceColor, emissionsColor, reflection, transparency}
 }
-func trace(rayorig, raydir vec3.T, spheres *[]sphere, depth int) vec3.T {
+func trace(rayorig, raydir *vec3.T, spheres *[]sphere, depth int) vec3.T {
 	tnear := math.Inf(1)
 	//const Sphere* sphere = NULL;
 	var sph *sphere
 	for i := 0; i < len(*spheres); i++ {
-		inter, t0, t1 := (*spheres)[i].intersect(&rayorig, &raydir)
+		inter, t0, t1 := (*spheres)[i].intersect(rayorig, raydir)
 		if inter {
 			if t0 < 0 {
 				t0 = t1
@@ -93,21 +93,21 @@ func trace(rayorig, raydir vec3.T, spheres *[]sphere, depth int) vec3.T {
 	}
 
 	surfaceColor := vec3.Zero
-	phit := vec3.Add(&rayorig, mulF(raydir, tnear))
+	phit := vec3.Add(rayorig, mulF(raydir, tnear))
 	nhit := vec3.Sub(&phit, &(*sph).centre)
 	nhit.Normalize()
 	bias := 1e-4
 	inside := false
-	if vec3.Dot(&raydir, &nhit) > 0 {
+	if vec3.Dot(raydir, &nhit) > 0 {
 		nhit = nhit.Inverted()
 		inside = true
 	}
 	if (sph.transparency > 0 || sph.reflection > 0) && depth < maxRayDepth {
-		facingratio := 0 - float64(vec3.Dot(&raydir, &nhit))
+		facingratio := 0 - float64(vec3.Dot(raydir, &nhit))
 		fresneleffect := mix(math.Pow(1-facingratio, 3), 1, 0.1)
-		refldir := vec3.Sub(&raydir, mulF(nhit, float64(2*vec3.Dot(&raydir, &nhit)))) //mulF(vec3.Sub(&raydir, &nhit), float64(2*vec3.Dot(&raydir, &nhit)))
-		org := vec3.Add(&phit, mulF(nhit, bias))
-		reflection := trace(org, refldir, spheres, depth+1) //vec3.T{0, 1.74, 2}
+		refldir := vec3.Sub(raydir, mulF(&nhit, float64(2*vec3.Dot(raydir, &nhit)))) //mulF(vec3.Sub(&raydir, &nhit), float64(2*vec3.Dot(&raydir, &nhit)))
+		org := vec3.Add(&phit, mulF(&nhit, bias))
+		reflection := trace(&org, &refldir, spheres, depth+1) //vec3.T{0, 1.74, 2}
 		refraction := vec3.Zero
 		if sph.transparency > 0 {
 			ior := 1.1
@@ -115,13 +115,14 @@ func trace(rayorig, raydir vec3.T, spheres *[]sphere, depth int) vec3.T {
 			if !inside {
 				eta = 1 / ior
 			}
-			cosi := float64(-vec3.Dot(&nhit, &raydir))
+			cosi := float64(-vec3.Dot(&nhit, raydir))
 			k := 1 - eta*eta*(1-cosi*cosi)
-			refrdir := vec3.Add(mulF(raydir, eta), mulF(nhit, (eta*cosi-math.Sqrt(k))))
+			refrdir := vec3.Add(mulF(raydir, eta), mulF(&nhit, (eta*cosi-math.Sqrt(k))))
 			refrdir.Normalize()
-			refraction = trace(vec3.Sub(&phit, mulF(nhit, bias)), refrdir, spheres, depth+1)
+			org := vec3.Sub(&phit, mulF(&nhit, bias))
+			refraction = trace(&org, &refrdir, spheres, depth+1)
 		}
-		temp := vec3.Add(mulF(reflection, fresneleffect), mulF(refraction, (1-fresneleffect)*sph.transparency))
+		temp := vec3.Add(mulF(&reflection, fresneleffect), mulF(&refraction, (1-fresneleffect)*sph.transparency))
 		surfaceColor = vec3.Mul(
 			&temp, &sph.surfaceColor)
 	} else {
@@ -132,7 +133,7 @@ func trace(rayorig, raydir vec3.T, spheres *[]sphere, depth int) vec3.T {
 				lightDirection.Normalize()
 				for j := 0; j < len((*spheres)); j++ {
 					if i != j {
-						org := vec3.Add(&phit, mulF(nhit, bias))
+						org := vec3.Add(&phit, mulF(&nhit, bias))
 						ints, _, _ := (*spheres)[j].intersect(&org, &lightDirection)
 						if ints {
 							transmission = vec3.Zero
@@ -141,7 +142,8 @@ func trace(rayorig, raydir vec3.T, spheres *[]sphere, depth int) vec3.T {
 					}
 				}
 				ste := vec3.Mul(&sph.surfaceColor, &(*spheres)[i].emissionsColor)
-				surfaceColor = vec3.Add(&surfaceColor, mulF(vec3.Mul(&ste, &transmission), math.Max(0.0, float64(vec3.Dot(&nhit, &lightDirection)))))
+				trans := vec3.Mul(&ste, &transmission)
+				surfaceColor = vec3.Add(&surfaceColor, mulF(&trans, math.Max(0.0, float64(vec3.Dot(&nhit, &lightDirection)))))
 			}
 		}
 	}
@@ -159,7 +161,7 @@ func saveImg(imgc chan *image.RGBA, iterc chan int) {
 			}
 			jpeg.Encode(f, img, nil)
 			f.Close()
-			fmt.Printf("saved: %v\n", iteration)
+			//fmt.Printf("saved: %v\n", iteration)
 		} else {
 			return
 		}
@@ -188,12 +190,12 @@ func render(camra *cam, workc chan *rendWork, imgc chan *image.RGBA, iterc chan 
 					yy = (1 - 2*((float64(y)+0.5)*camra.invHeight)) * camra.angle
 					rayDir := vec3.T{float32(xx), float32(yy), -1}
 					rayDir.Normalize()
-					imageg[pixel] = trace(vec3.Zero, rayDir, spheres, 0)
+					imageg[pixel] = trace(&vec3.Zero, &rayDir, spheres, 0)
 					makeImg(pixel, x, y, imageg, img)
 					pixel++
 				}
 			}
-			fmt.Printf("Finished Rendering: %v\n", iteration)
+			//fmt.Printf("Finished Rendering: %v\n", iteration)
 			imgc <- img
 			iterc <- iteration
 			//go saveImg(img, iteration)
@@ -203,11 +205,12 @@ func render(camra *cam, workc chan *rendWork, imgc chan *image.RGBA, iterc chan 
 	}
 }
 func start() {
-	workers := 7
+	workers := 31
+	fileWorkers := 10
 	interations := 1000.0
-	imgc := make(chan *image.RGBA)
-	iterc := make(chan int)
-	workc := make(chan *rendWork)
+	imgc := make(chan *image.RGBA, fileWorkers)
+	iterc := make(chan int, fileWorkers)
+	workc := make(chan *rendWork, workers)
 
 	//	width, height                                int
 	//invWidth, invHeight, fov, aspectratio, angle float64
@@ -217,9 +220,12 @@ func start() {
 		wg.Add(1)
 		go render(&camra, workc, imgc, iterc)
 	}
-	go saveImg(imgc, iterc)
+	for i := 0; i < fileWorkers; i++ {
+		go saveImg(imgc, iterc)
+	}
+
 	for i := 0; i < int(interations); i++ {
-		fmt.Printf("Started Rendering: %v\n", i)
+		//fmt.Printf("Started Rendering: %v\n", i)
 		var spheres []sphere
 
 		spheres = append(spheres, makeSphereEmis(vec3.T{0.0, -10004, -10}, 10000, vec3.T{0.0, 0.20, 0.}, vec3.T{0.0, 0.20, 0.0}, 1, 0))
@@ -249,9 +255,9 @@ func main() {
 		}
 		defer pprof.StopCPUProfile()
 	}
-
+	fmt.Printf("Started")
 	start()
-
+	fmt.Printf("ended")
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
 		if err != nil {
