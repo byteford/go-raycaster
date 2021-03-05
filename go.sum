@@ -1,0 +1,4 @@
+github.com/barnex/fmath v0.0.0-20150108074215-ec9671f295c2 h1:FOAZHSIFEhocAOfB7LQcZmCEAra7hneHMBPL8Nq/eDk=
+github.com/barnex/fmath v0.0.0-20150108074215-ec9671f295c2/go.mod h1:G7XW+2O6Hk/x6OP8AuwZjI8ZTyXvKDTTKaRK92gapfk=
+github.com/ungerik/go3d v0.0.0-20200217190927-d82aececefe9 h1:UB8711q6/u7duvOYgQdAk94MBYndjD/aESY1j+kjI2E=
+github.com/ungerik/go3d v0.0.0-20200217190927-d82aececefe9/go.mod h1:K+51Zn76DRybk/9H3P4uJot7sq8cF8vaLIrqTApkqVo=
